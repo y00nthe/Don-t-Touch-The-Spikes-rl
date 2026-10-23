@@ -1,0 +1,23 @@
+{
+  "name": "gra-ts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Don't Touch The Spikes - port gry z C++/SFML na TypeScript (Canvas)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^6.0.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "@fontsource/lilita-one": "^5.3.0"
+  }
+}
