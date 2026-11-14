@@ -2,7 +2,7 @@
 \input{article_style.tex}
 
 \title{Raport projektowy\\Uczenie się ze wzmocnieniem}
-\author{Imię i nazwisko studenta}
+\author{Karolina Działowska\\}
 \date{2026/2027}
 
 \begin{document}
@@ -17,12 +17,12 @@
 \toprule
 Element & Informacja \\
 \midrule
-Imię i nazwisko & Do uzupełnienia \\
-Numer albumu & Do uzupełnienia \\
-Kierunek/specjalność & Do uzupełnienia \\
-Tytuł projektu & Do uzupełnienia \\
-Link do repozytorium & \url{https://github.com/...} \\
-Data oddania & Do uzupełnienia \\
+Imię i nazwisko & Karolina Działowska\\
+Numer albumu & 179478 \\
+Kierunek/specjalność & Informatyka/AI \\
+Tytuł projektu & Don't Touch The Spikes RL \\
+Link do repozytorium & \url{https://github.com/y00nthe/Don-t-Touch-The-Spikes-rl} \\
+Data oddania & 14.11.2026 \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -31,87 +31,215 @@ Data oddania & Do uzupełnienia \\
 
 \subsection{Opis problemu}
 
-Należy krótko opisać problem rozwiązywany w~projekcie. 
-Opis powinien być zrozumiały bez czytania kodu źródłowego.
+Projekt dotyczy prostej gry 2D wzorowanej na mobilnej grze "Don't Touch the Spikes".
+
+Gracz steruje ptakiem na planszy o~wymiarach $400 \times 600$ pikseli.
+Ptak sam leci w~poziomie, od jednej bocznej ściany do drugiej, a~po
+dotknięciu ściany odbija się i~leci z~powrotem. Jednocześnie ciągle
+spada w~dół, bo działa na niego grawitacja. Jedyne, co może zrobić
+gracz, to skok -- podbija on ptaka w~górę.
+
+Na suficie i~podłodze zawsze są kolce. Po każdym odbiciu kolce pojawiają
+się też na ścianie, do której ptak leci, w~losowych miejscach. Każde
+odbicie daje 1~punkt, a~im więcej punktów, tym więcej kolców. Na planszy
+pojawiają się również monety, które można zbierać.
+
+Zadanie polega na skakaniu w~odpowiednich momentach, tak aby ptak
+przeleciał przez wolne miejsce między kolcami i~nie dotknął żadnego
+kolca.
 
 \subsection{Cel agenta}
 
-Należy wyjaśnić, co agent ma osiągnąć oraz kiedy jego działanie można uznać za poprawne lub skuteczne.
+Celem agenta jest przetrwanie jak najdłużej, czyli wykonanie jak największej
+liczby odbić od ścian bez kolizji z~kolcem (na ścianie bocznej, suficie lub
+podłodze), przy jednoczesnym zbieraniu monet pojawiających się na planszy.
+Działanie agenta uznaje się za skuteczne, gdy potrafi grać w~nieskończoność
+lub osiąga wysoki i~stabilny wynik w~każdym epizodzie.
 
 \subsection{Uzasadnienie zastosowania uczenia się ze wzmocnieniem}
 
-Należy wyjaśnić, dlaczego problem można rozpatrywać jako problem uczenia się ze wzmocnieniem. W szczególności należy wskazać:
 \begin{itemize}
-    \item jakie decyzje są podejmowane sekwencyjnie,
-    \item w jaki sposób decyzje wpływają na przyszły stan środowiska,
-    \item dlaczego istotny jest wynik długoterminowy, a nie tylko natychmiastowa nagroda,
-    \item dlaczego zastosowanie agenta uczącego się jest uzasadnione.
+    \item \textbf{Sekwencyjne decyzje} -- w~każdym kroku czasowym agent
+    decyduje, czy wykonać skok, czy pozwolić ptakowi swobodnie opadać.
+    Przebieg epizodu jest wynikiem długiej sekwencji takich decyzji.
+    \item \textbf{Wpływ decyzji na przyszły stan} -- skok zmienia prędkość
+    pionową ptaka, a~przez to całą trajektorię lotu aż do kontaktu ze ścianą
+    docelową. Decyzja podjęta w~danej klatce decyduje o~wysokości, na której
+    ptak dotrze do ściany kilkadziesiąt klatek później.
+    \item \textbf{Znaczenie wyniku długoterminowego} -- zła sekwencja skoków
+    nie musi przynieść natychmiastowej kary, ale może doprowadzić do stanu,
+    z~którego kolizja z~kolcem na ścianie bocznej, suficie lub podłodze jest
+    już nieunikniona. Istotne jest więc utrzymywanie takiej wysokości, aby
+    trafić w~bezpieczną lukę między kolcami na ścianie docelowej, a~nie
+    tylko unikanie kolizji w~bieżącym kroku.
+    \item \textbf{Zasadność agenta uczącego się} -- problem można opisać
+    jako proces decyzyjny Markowa: następny stan zależy tylko od stanu
+    bieżącego i~wybranej akcji, a~skutki decyzji (nagroda lub kara)
+    pojawiają się często dopiero po wielu krokach. Kolce za każdym razem
+    są rozmieszczone inaczej, więc agent nie może nauczyć się na pamięć
+    jednej trasy -- musi umieć reagować na dowolny układ kolców. Zamiast
+    ręcznie ustalać, kiedy skakać, agent uczy się tego sam, metodą prób
+    i~błędów, na podstawie nagród otrzymywanych w~trakcie gry.
 \end{itemize}
 
 \section{Formalizacja problemu RL/MDP}
 
 \subsection{Agent i środowisko}
+ 
+Agentem jest logika podejmująca decyzję o~skoku w~dyskretnych krokach
+czasowych. Środowiskiem jest fizyka gry: grawitacja, ruch poziomy ze stałą
+prędkością, odbicia od ścian bocznych, generowanie kolców i~monet oraz
+wykrywanie kolizji.
 
-Należy opisać agenta, środowisko oraz sposób ich interakcji. Warto wskazać, co dzieje się w jednym kroku epizodu.
+W~jednym kroku epizodu:
+\begin{enumerate}
+    \item agent otrzymuje wektor obserwacji $o_t$,
+    \item agent wybiera jedną dyskretną akcję $a_t \in \{0, 1\}$,
+    \item środowisko stosuje akcję (przy skoku ustawia prędkość pionową
+    ptaka), a~następnie aktualizuje jego pozycję i~prędkość,
+    \item środowisko sprawdza kolizje z~kolcami, sufitem i~podłogą,
+    obsługuje odbicie od ściany (zwiększenie wyniku i~zaplanowanie nowych
+    kolców) oraz zebranie monety,
+    \item środowisko zwraca nagrodę $r_t$, nową obserwację $o_{t+1}$
+    oraz informację, czy epizod się zakończył.
+\end{enumerate}
+
+Długość jednego kroku czasowego jest stała i~wynosi $\Delta t = 1/60$~s
+(jedna klatka gry, ok.\ 16{,}7~ms). Nie stosuje się powtarzania akcji
+przez kilka klatek (frame skip $= 1$) -- agent podejmuje decyzję
+w~każdej klatce. Na początku epizodu ptak o~wymiarach $20 \times 20$~px
+znajduje się w~punkcie $(190, 290)$ z~zerową prędkością pionową,
+a~ruch rozpoczyna się od razu, bez oczekiwania na pierwszy skok.
 
 \subsection{Stan lub obserwacja}
 
-Należy opisać informacje dostępne dla agenta. Jeżeli agent nie obserwuje pełnego stanu środowiska, należy wyjaśnić różnicę między stanem środowiska a obserwacją agenta.
+Pełny stan środowiska obejmuje m.in.\ dokładną pozycję i~prędkość ptaka
+(w~obu osiach), położenie wszystkich kolców na obu ścianach, położenie
+monety, bieżący wynik, licznik opóźnienia generowania kolców oraz stan
+generatora liczb losowych. Agent otrzymuje wektor obserwacji będący
+zwięzłą reprezentacją części tego stanu, istotnej dla podejmowania decyzji.
+Pomijane są m.in.\ kolce na ścianie, od której ptak się oddala (i~tak są
+usuwane po odbiciu), wynik oraz stan generatora losowego. Przyjmuje się
+idealną obserwowalność: wartości w~obserwacji są dokładne, bez szumu.
 
 \begin{center}
 \begin{tabular}{p{0.30\textwidth}p{0.60\textwidth}}
 \toprule
 Składowa stanu/obserwacji & Znaczenie \\
 \midrule
-Do uzupełnienia & Do uzupełnienia \\
-Do uzupełnienia & Do uzupełnienia \\
-Do uzupełnienia & Do uzupełnienia \\
+Pozycja $Y$ agenta & Znormalizowana wysokość ptaka na planszy. \\
+Odległość $X$ do ściany docelowej & Znormalizowana odległość pozioma ptaka
+od ściany, w~stronę której aktualnie leci. \\
+Prędkość $Y$ agenta & Prędkość pionowa ptaka (wartość ujemna -- wznoszenie,
+dodatnia -- opadanie). \\
+Wektor zajętości slotów (14 elementów) &
+Wektor binarny opisujący ścianę docelową: 1~oznacza, że w~danym slocie
+znajduje się kolec, 0~-- że slot jest bezpieczny. \\
+Pozycja $X$ monety & Znormalizowana współrzędna pozioma monety;
+$-1$, gdy na planszy nie ma monety. \\
+Pozycja $Y$ monety & Znormalizowana współrzędna pionowa monety;
+$-1$, gdy na planszy nie ma monety. \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \subsection{Akcje}
 
-Należy opisać zbiór akcji dostępnych dla agenta. 
-Jeżeli niektóre akcje są niedozwolone w~określonych stanach, 
-należy to wyjaśnić.
-
+Zbiór akcji jest dyskretny i~dwuelementowy: $\mathcal{A} = \{0, 1\}$.
+Obie akcje są dozwolone w~każdym stanie. Skok nie dodaje prędkości do
+bieżącej, tylko ją nadpisuje, więc wielokrotny skok w~krótkim czasie nie
+powoduje kumulowania się wznoszenia.
+ 
 \begin{center}
 \begin{tabular}{p{0.30\textwidth}p{0.60\textwidth}}
 \toprule
 Akcja & Opis \\
 \midrule
-Do uzupełnienia & Do uzupełnienia \\
-Do uzupełnienia & Do uzupełnienia \\
-Do uzupełnienia & Do uzupełnienia \\
+0 -- brak akcji & Ptak swobodnie opada pod wpływem grawitacji
+($g = 2000$~px/s$^2$), poruszając się poziomo w~stronę ściany docelowej. \\
+1 -- skok & Prędkość pionowa ptaka zostaje natychmiast ustawiona na
+$v_y = -600$~px/s (ruch w~górę); ruch poziomy nie ulega zmianie. \\
 \bottomrule
 \end{tabular}
 \end{center}
+ 
 
 \subsection{Funkcja nagrody}
 
-Należy dokładnie opisać funkcję nagrody. Opis powinien zawierać nie tylko wzór lub kod, ale również uzasadnienie przyjętych wartości.
-
 \begin{equation}
-    r_t = \text{do uzupełnienia}
+    r_t =
+    \begin{cases}
+        -100, & \text{jeżeli w kroku } t \text{ nastąpiła kolizja z kolcem
+        (ściana, sufit, podłoga)}, \\
+        0{,}1 + 10 \cdot c_t, & \text{w przeciwnym przypadku},
+    \end{cases}
 \end{equation}
-
-W tej sekcji należy wyjaśnić:
+gdzie $c_t \in \{0, 1\}$ przyjmuje wartość 1, jeżeli w~kroku $t$ agent
+zebrał monetę.
+ 
 \begin{itemize}
-    \item za co agent otrzymuje nagrodę dodatnią,
-    \item za co agent otrzymuje karę,
-    \item czy występuje kara za krok,
-    \item czy występują ograniczenia twarde lub miękkie,
-    \item czy nagroda nie zachęca agenta do niepożądanego zachowania.
+    \item \textbf{Nagroda dodatnia} -- agent otrzymuje $+0{,}1$ za każdy
+    bezpieczny krok bez kolizji oraz $+10$ za zebranie monety.
+    \item \textbf{Kara} -- agent otrzymuje $-100$ za kolizję z~dowolnym
+    kolcem: na ścianie bocznej, suficie lub podłodze.
+    \item \textbf{Kara za krok} -- nie występuje; przeciwnie, każdy krok jest
+    lekko nagradzany. Dodatnia nagroda za przeżycie zapobiega
+    ,,samobójstwom'' agenta, czyli celowemu kończeniu epizodu.
+    \item \textbf{Ograniczenia twarde i~miękkie} -- kara za kolizję jest
+    twarda: kończy epizod. Nie stosuje się ograniczeń miękkich (np.\ kar
+    za przebywanie blisko kolców).
+    \item \textbf{Ryzyko niepożądanych zachowań} -- prędkość pozioma ptaka
+    jest stała, więc agent nie może ,,stać w~miejscu'' i~zbierać nagrody
+    za przeżycie bez wykonywania odbić; czas przetrwania jest wprost
+    powiązany z~liczbą odbić, czyli wynikiem w~grze. Nagroda za monetę
+    odpowiada 100~krokom przetrwania, co zachęca do zbierania monet, ale
+    jest dziesięciokrotnie mniejsza od kary za śmierć, dlatego ryzykowne
+    pościgi za monetą nie powinny się opłacać. Duża kara za śmierć wymusza
+    unikanie przeszkód.
 \end{itemize}
 
 \subsection{Warunki zakończenia epizodu}
 
-Należy wskazać wszystkie sytuacje, w których epizod zostaje zakończony, np. osiągnięcie celu, kolizja, wyczerpanie energii, przekroczenie limitu kroków albo wejście w stan porażki.
+Epizod kończy się w~stanie porażki, gdy:
+\begin{itemize}
+    \item prostokąt otaczający ptaka przetnie się z~obszarem kolizji
+    (hitboxem) dowolnego kolca na ścianie bocznej -- hitbox kolca jest
+    pomniejszony o~5~px z~każdej strony względem jego rysunku,
+    \item ptak wleci w~pas kolców na suficie lub podłodze, tzn.\ górna
+    krawędź ptaka znajdzie się powyżej $y = 40$~px lub dolna krawędź
+    poniżej $y = 560$~px.
+\end{itemize}
+
+Nie istnieje stan celu kończący epizod sukcesem. Epizod jest obcinany
+po 10\,000 krokach (ok.\ 167~s gry); obcięcie nie jest traktowane jako
+stan terminalny.
 
 \subsection{Założenia i ograniczenia środowiska}
 
-Należy opisać uproszczenia przyjęte w projekcie, ograniczenia modelu środowiska oraz elementy, które nie zostały uwzględnione.
+\begin{itemize}
+    \item Fizyka gry jest uproszczona: stała grawitacja, brak oporu
+    powietrza, stała prędkość pozioma, idealnie sprężyste odbicie od ścian
+    bocznych (zmiana kierunku ruchu poziomego bez utraty prędkości).
+    \item Zakłada się idealną obserwowalność -- agent zna dokładne pozycje
+    ptaka, kolców i~monety.
+    \item Pomija się opóźnienia sprzętowe i~opóźnienie reakcji -- akcja
+    działa natychmiast w~kroku, w~którym została wybrana.
+    \item Ściana boczna jest podzielona na sloty o~wysokości 36~px
+    w~pasie między sufitem a~podłogą, co daje
+    $\lfloor (600 - 2 \cdot 40) / 36 \rfloor = 14$ slotów. Liczba kolców
+    wynosi $\min\left(f + \lfloor \text{wynik} / 5 \rfloor,\ 10\right)$,
+    gdzie $f$ zależy od poziomu trudności -- co najmniej 4~sloty zawsze
+    pozostają wolne.
+    \item Po każdym odbiciu kolce z~obu ścian są usuwane, a~nowe pojawiają
+    się na ścianie docelowej po 0{,}3~s. W~tym czasie wektor zajętości
+    slotów ściany docelowej jest zerowy.
+    \item Na planszy znajduje się co najwyżej jedna moneta. Na początku
+    epizodu moneta pojawia się zawsze. Kolejna pojawia się w~losowym
+    miejscu przy odbiciu, gdy wynik jest wielokrotnością 3, a~poprzednia
+    została zebrana.
+    \item Agent trenowany jest na poziomie trudności Medium: prędkość
+    pozioma 200~px/s, początkowa liczba kolców $f = 3$.
+\end{itemize}
 
 \section{Implementacja}
 
